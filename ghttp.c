@@ -25,16 +25,14 @@
 #include "cJSON.h"
 #include "xlog.h"
 
-typedef struct 
-{
+typedef struct {
 	char db_host[32];
 	char db_user[32];
 	char db_passwd[32];
 	char db_name[32];
 } db_info_s;
 
-typedef struct 
-{
+typedef struct {
 	int proc_num;
 	int epollfd;
 	int listen_sockfd;

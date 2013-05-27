@@ -239,6 +239,7 @@ cJSON* http_parse_response_header(const char* rsp, unsigned int rsp_len) {
 void http_create_request_header(cJSON* req, dyn_buf* buff) {
 	char* o = NULL;
 	cJSON* c = NULL;
+	char o2[256];
 
 	// first line
 	c = cJSON_GetObjectItem_EX(req, "first_line");
@@ -258,7 +259,13 @@ void http_create_request_header(cJSON* req, dyn_buf* buff) {
 			c = c->next;
 			continue;
 		}
-		o = c->valuestring;
+		if (cJSON_Number == c->type) {
+			safe_snprintf(o2, sizeof(o2)-1, "%d", c->valueint);
+			o = o2;
+		}
+		else {
+			o = c->valuestring;
+		}
 		copy_buffer(buff, c->string, strlen(c->string));
 		copy_buffer(buff, ":", 1);
 		copy_buffer(buff, o, strlen(o)); // `remove the symbol " in the begin and the end`
@@ -273,6 +280,7 @@ void http_create_request_header(cJSON* req, dyn_buf* buff) {
 void http_create_rsponse_header(cJSON* rsp, dyn_buf* buff) {
 	char* o = NULL;
 	cJSON* c = NULL;
+	char o2[256];
 
 	// first line
 	c = cJSON_GetObjectItem_EX(rsp, "first_line");
@@ -290,7 +298,13 @@ void http_create_rsponse_header(cJSON* rsp, dyn_buf* buff) {
 			c = c->next;
 			continue;
 		}
-		o = c->valuestring;
+		if (cJSON_Number == c->type) {
+			safe_snprintf(o2, sizeof(o2)-1, "%d", c->valueint);
+			o = o2;
+		}
+		else {
+			o = c->valuestring;
+		}
 		copy_buffer(buff, c->string, strlen(c->string));
 		copy_buffer(buff, ":", 1);
 		copy_buffer(buff, o, strlen(o)); // `remove the symbol " in the begin and the end`
