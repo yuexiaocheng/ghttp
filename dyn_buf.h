@@ -21,14 +21,15 @@ extern "C"
 
 #define MAX_COPY_LEN (10*1024*1024)
 typedef struct {
-	unsigned long maxlen;
-	unsigned long usedlen;
+	unsigned int maxlen;
+	unsigned int usedlen;
 	char* buffer;
 } dyn_buf;
 
-int init_buffer(dyn_buf* it, unsigned long len);
+int init_buffer(dyn_buf* it, unsigned int len);
 int copy_buffer(dyn_buf* it, const char* in, int inlen);
 char* get_buffer(dyn_buf* it);
+unsigned int get_buffer_len(dyn_buf* it);
 void reset_buffer(dyn_buf* it);
 int is_buffer_empty(dyn_buf* it);
 void free_buffer(dyn_buf* it);

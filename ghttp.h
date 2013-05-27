@@ -51,8 +51,7 @@ extern "C"
 #include "iplib.h"
 #pragma pack(1)
 
-typedef enum
-{
+typedef enum {
 	conn_type_nouse = 0,
 	conn_type_listen,
 	conn_type_client,
@@ -60,12 +59,13 @@ typedef enum
 	conn_type_upstream_proxy,
 } conn_type_t;
 
-enum
-{
+enum {
 	socket_unused = -1,
 };
 
 #define GHTTP_VERSION "1.0.0"
+#define GHTTP_NAME "ghttp"
+#define GHTTP_SERVER GHTTP_NAME " " GHTTP_VERSION
 
 #define MAX_SOCKET (10*1000)
 

@@ -16,7 +16,7 @@
 #include <string.h>
 #include "dyn_buf.h"
 
-int init_buffer(dyn_buf* it, unsigned long len) {
+int init_buffer(dyn_buf* it, unsigned int len) {
 	assert(NULL != it);
 	it->buffer = (char*)malloc(len);
 	if (NULL == it->buffer) {
@@ -34,7 +34,7 @@ int init_buffer(dyn_buf* it, unsigned long len) {
 
 int copy_buffer(dyn_buf* it, const char* in, int inlen) {
 	char* pTmp = NULL;
-	unsigned long needlen = 0;
+	unsigned int needlen = 0;
 	
 	assert(NULL != it);
 	assert(NULL != in);
@@ -64,6 +64,11 @@ int copy_buffer(dyn_buf* it, const char* in, int inlen) {
 char* get_buffer(dyn_buf* it) {
 	assert(NULL != it);
 	return it->buffer;
+}
+
+unsigned int get_buffer_len(dyn_buf* it) {
+	assert(NULL != it);
+	return it->usedlen;
 }
 
 void reset_buffer(dyn_buf* it) {

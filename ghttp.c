@@ -54,16 +54,15 @@ typedef struct
 
 	char html_template_path[256];
 	char static_html_path[256];
-	
+
 	db_info_s db_info;
 	MYSQL* db;
 } CONFIG;
 
 CONFIG global;
 sig_atomic_t handle_sig_alarm = 0;
-int common_send_rsp(g_connection_pt conn, int status, const char* content) {return 0;}
 int send_http_rsp(g_connection_pt conn, int status);
-
+int send_http_wrong_rsp(g_connection_pt conn, int status);
 static int set_rlimit(size_t limit);
 static int do_work(g_connection_pt conn);
 static bool is_complete_http_header();
@@ -486,14 +485,10 @@ static bool is_complete_http_header(g_connection_pt conn) {
 	cJSON* json = NULL;
 	char* ip = NULL;
 	char* debug = NULL;
-	dyn_buf b;
 
 	conn->header = http_parse_request_header(conn->recv_buf, conn->bytes_recved);
 	if (NULL == conn->header)
 		return false;
-	init_buffer(&b, 1024);
-	http_create_request_header(conn->header, &b);
-	Info("%s(%d): \n%s\n", __FUNCTION__, __LINE__, get_buffer(&b));
 	// record real ip
 	if (NULL != (json = cJSON_GetObjectItem_EX(conn->header, "client_ip"))) {
 		ip = json->valuestring;
@@ -507,6 +502,13 @@ static bool is_complete_http_header(g_connection_pt conn) {
 		ip = inet_ntoa(conn->client_addr.sin_addr);
 		safe_memcpy_0(conn->real_ip, sizeof(conn->real_ip)-1, ip, strlen(ip));
 	}
+	json = cJSON_GetObjectItem_EX(conn->header, "Connection");
+	if (NULL == json)
+		conn->is_keepalive = 0;
+	else if (0 == memcmp(json->valuestring, "keep-alive", sizeof("keep-alive")-1))
+		conn->is_keepalive = 1;
+	else
+		conn->is_keepalive = 0;
 	debug = cJSON_Print(conn->header);
 	Info("%s(%d): \n%s\n", __FUNCTION__, __LINE__, debug);
 	free(debug);
@@ -546,8 +548,8 @@ static int do_client_recv(g_connection_pt conn) {
 		// if a complete http package?
 		if (is_complete_http_header(conn)) {
 			status = do_work(conn);
-			if (status != 0)
-				common_send_rsp(conn, status, "");
+			if (status != 200)
+				send_http_wrong_rsp(conn, status);
 		}
 		else if (ret == left) {
 			// wrong requst
@@ -903,7 +905,7 @@ static void write_access_log(g_connection_pt conn) {
 	char* ua = NULL;
 	char* first_line = NULL;
 	char path[256] = {0};
-	
+
 	static int a[] = { 
 		0,0,0,0,0,5,5,5,5,5,
 		10,10,10,10,10,15,15,15,15,15,
@@ -962,73 +964,104 @@ static void write_access_log(g_connection_pt conn) {
 	return;
 }
 
+static int on_all_task(g_connection_pt conn);
+
 static int do_work(g_connection_pt conn) {
 	write_access_log(conn);
-	return 400;
+
+	char* cmd = cJSON_GetObjectItem_EX(conn->header, "cmd")->valuestring;
+	int n = strlen(cmd);
+	if ((n == sizeof("/all_task")-1) && (0 == memcmp(cmd, "/all_task", sizeof("/all_task")-1)))
+		on_all_task(conn);
+	else
+		return 400;
+	return 200;
 }
 
-static int build_rsp_header(g_connection_pt conn, int status)
-{
-	int ret = 0;
-	char* s = NULL;
+static int on_all_task(g_connection_pt conn) {
+	MYSQL* db = NULL;
+	MYSQL_RES* res = NULL;
+	static char sql[10240];
+	int row_c = 0;
+	MYSQL_ROW row;
+	int field_c = 0;
+	MYSQL_FIELD* fields;
+	int i, j;
+	char first_line[256];
 
-	switch (status)
-	{
-		case 200:
-			s = DESC_200;
-			break;
-		case 206:
-			s = DESC_206;
-			break;
-		case 302:
-			s = DESC_302;
-			break;
-		case 304:
-			s = DESC_304;
-			break;
-		case 400:
-			s = DESC_400;
-			break;
-		case 403:
-			s = DESC_403;
-			break;
-		case 408:
-			s = DESC_408;
-			break;
-		case 500:
-			s = DESC_500;
-			break;
-		case 503:
-			s = DESC_503;
-			break;
-		default:
-			s = other_desc;
-			break;
+	cJSON *root = NULL, *cata = NULL, *cata_item = NULL;
+	char* out = NULL;
+	int ret_code = 0;
+
+	// create sql
+	safe_snprintf(sql, sizeof(sql)-1, "select * from timer_tasks");
+
+	Info("%s(%d): %s\n", __FUNCTION__, __LINE__, sql);
+	db = global.db;
+	if (0 != mysql_query(db, sql)) {
+		Error("%s(%d): Query failed. error: %s\n", __FUNCTION__, __LINE__, mysql_error(db));
+		mysql_close(db);
+		return -7;
 	}
-	ret = safe_snprintf(conn->send_buf, sizeof(conn->send_buf), "HTTP/1.1 %d %s\r\nContent-Length: %u\r\n", 
-			status, s, conn->content_length);
-	if (ret < 0)
-	{
-		Error("%s(%d): safe_snprintf() failed. error(%d): %s\n", __FUNCTION__, __LINE__, errno, strerror(errno));
-		return -1;
+	res = mysql_store_result(db);
+	fields = mysql_fetch_fields(res);
+	field_c = mysql_num_fields(res);
+	row = mysql_fetch_row(res);
+	row_c = mysql_num_rows(res);
+
+	// json
+	root = cJSON_CreateObject();
+	cJSON_AddNumberToObject(root, "ret_code", ret_code);
+	cJSON_AddStringToObject(root, "ret_msg", "success");
+	cJSON_AddItemToObject(root, "task_list", cata=cJSON_CreateArray());
+	for (i=0; i<row_c; ++i) {
+		row = mysql_fetch_row(res);
+		if (row) {
+			cJSON_AddItemToArray(cata, cata_item=cJSON_CreateObject());
+			for (j=0; j<field_c; ++j) {
+				if (IS_NUM(fields[j].type))
+					cJSON_AddNumberToObject(cata_item, fields[j].name, atoi(row[j]));
+				else
+					cJSON_AddStringToObject(cata_item, fields[j].name, row[j]);
+			}
+		}
 	}
-	conn->head_bytes_to_send += ret;
-	return ret;
+	out = cJSON_PrintUnformatted(root);
+	cJSON_Delete(root);
+	// prepare for send rsp
+	conn->content_length = strlen(out);
+	conn->body_send_buf = out;
+	Info("%s\n", out);
+	safe_snprintf(first_line, sizeof(first_line)-1, "HTTP/1.1 %d %s", 200, DESC_200);
+	conn->rsp_header = cJSON_CreateObject();
+	cJSON_AddStringToObject(conn->rsp_header, "first_line", first_line);
+	cJSON_AddStringToObject(conn->rsp_header, "Content-Type", "application/json;charset=UTF-8");
+	cJSON_AddStringToObject(conn->rsp_header, "Server", GHTTP_SERVER);
+	if (conn->is_keepalive)
+		cJSON_AddStringToObject(conn->rsp_header, "Connection", "keep-alive");
+	else
+		cJSON_AddStringToObject(conn->rsp_header, "Connection", "close");
+	cJSON_AddNumberToObject(conn->rsp_header, "Content-Length", conn->content_length);
+
+	send_http_rsp(conn, 200);
+	return 0;
 }
 
-int send_http_rsp(g_connection_pt conn, int status)
-{
+int send_http_rsp(g_connection_pt conn, int status) {
 	if (conn->sockfd < 0)
 		return 0;
-	build_rsp_header(conn, status);
+	dyn_buf buf;
 
+	init_buffer(&buf, 1024);
+	http_create_rsponse_header(conn->rsp_header, &buf);
+	conn->head_bytes_to_send = get_buffer_len(&buf);
+	safe_memcpy(conn->send_buf, sizeof(conn->send_buf), get_buffer(&buf), conn->head_bytes_to_send);
 	conn->do_send = do_client_send_header;
 	conn->body_bytes_to_send = conn->content_length;
 	conn->bytes_sent = 0;
 	conn->status = status;
 	conn->ev.events |= EPOLLOUT;
-	if (epoll_ctl(global.epollfd, EPOLL_CTL_MOD, conn->sockfd, &(conn->ev)) < 0)
-	{
+	if (epoll_ctl(global.epollfd, EPOLL_CTL_MOD, conn->sockfd, &(conn->ev)) < 0) {
 		Error("%s(%d): epoll_ctl(%d, EPOLL_CTL_MOD, EPOLLOUT) failed. error(%d): %s\n", 
 				__FUNCTION__, __LINE__, conn->sockfd, errno, strerror(errno));
 		conn->do_close(conn);
@@ -1037,12 +1070,83 @@ int send_http_rsp(g_connection_pt conn, int status)
 	return 0;
 }
 
+int send_http_wrong_rsp(g_connection_pt conn, int status) {
+	if (conn->sockfd < 0)
+		return 0;
+	dyn_buf buf;
+	char first_line[256];
+	init_buffer(&buf, 1024);
+
+	char* desc = NULL;
+	switch (status) {
+		case 200:
+			desc = DESC_200;
+			break;
+		case 206:
+			desc = DESC_206;
+			break;
+		case 302:
+			desc = DESC_302;
+			break;
+		case 304:
+			desc = DESC_304;
+			break;
+		case 400:
+			desc = DESC_400;
+			break;
+		case 403:
+			desc = DESC_403;
+			break;
+		case 404:
+			desc = DESC_404;
+			break;
+		case 408:
+			desc = DESC_408;
+			break;
+		case 500:
+			desc = DESC_500;
+			break;
+		case 501:
+			desc = DESC_501;
+			break;
+		case 503:
+			desc = DESC_503;
+			break;
+		default:
+			desc = other_desc;
+			break;
+	}
+	safe_snprintf(first_line, sizeof(first_line)-1, "HTTP/1.1 %d %s", status, desc);
+	conn->rsp_header = cJSON_CreateObject();
+	cJSON_AddStringToObject(conn->rsp_header, "first_line", first_line);
+	cJSON_AddStringToObject(conn->rsp_header, "Content-Type", "text/plain;charset=UTF-8");
+	cJSON_AddStringToObject(conn->rsp_header, "Server", GHTTP_SERVER);
+	if (conn->is_keepalive)
+		cJSON_AddStringToObject(conn->rsp_header, "Connection", "keep-alive");
+	else
+		cJSON_AddStringToObject(conn->rsp_header, "Connection", "close");
+	conn->content_length = 0;
+	http_create_rsponse_header(conn->rsp_header, &buf);
+	conn->head_bytes_to_send = get_buffer_len(&buf);
+	safe_memcpy(conn->send_buf, sizeof(conn->send_buf), get_buffer(&buf), conn->head_bytes_to_send);
+	conn->do_send = do_client_send_header;
+	conn->body_bytes_to_send = conn->content_length;
+	conn->bytes_sent = 0;
+	conn->status = status;
+	conn->ev.events |= EPOLLOUT;
+	if (epoll_ctl(global.epollfd, EPOLL_CTL_MOD, conn->sockfd, &(conn->ev)) < 0) {
+		Error("%s(%d): epoll_ctl(%d, EPOLL_CTL_MOD, EPOLLOUT) failed. error(%d): %s\n", 
+				__FUNCTION__, __LINE__, conn->sockfd, errno, strerror(errno));
+		conn->do_close(conn);
+		return -1;
+	}
+	return 0;
+}
 
 int send_html_rsp(g_connection_pt conn, int status, const char* content_type)
 {
 	if (conn->sockfd < 0)
 		return 0;
-	build_rsp_header(conn, status);
 	conn->do_send = do_client_send_header;
 	conn->body_bytes_to_send = conn->content_length;
 	conn->bytes_sent = 0;
@@ -1064,7 +1168,6 @@ int send_302(g_connection_pt conn, char* s302)
 	Info("%s(%d): play url:\n%s\n", __FUNCTION__, __LINE__, s302);
 	if (conn->sockfd < 0)
 		return 0;
-	build_rsp_header(conn, 302);
 	conn->do_send = do_client_send_header;
 	conn->body_bytes_to_send = conn->content_length;
 	conn->bytes_sent = 0;
