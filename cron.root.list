@@ -1,0 +1,2 @@
+*/2 * * * * find /home/stanley/lts/static_html -type f -amin +4 -exec rm -f {} \; > /dev/null 2>&1
+*/5 * * * * /home/stanley/lts/update_rank.sh > /dev/null 2>&1
