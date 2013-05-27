@@ -962,7 +962,10 @@ static void write_access_log(g_connection_pt conn) {
 	return;
 }
 
+// User-Define functions
 static int on_all_task(g_connection_pt conn);
+static int on_set_task(g_connection_pt conn);
+static int on_del_task(g_connection_pt conn);
 
 static int do_work(g_connection_pt conn) {
 	write_access_log(conn);
@@ -971,6 +974,10 @@ static int do_work(g_connection_pt conn) {
 	int n = strlen(cmd);
 	if ((n == sizeof("/all_task")-1) && (0 == memcmp(cmd, "/all_task", sizeof("/all_task")-1)))
 		on_all_task(conn);
+	else if ((n == sizeof("/set_task")-1) && (0 == memcmp(cmd, "/set_task", sizeof("/set_task")-1)))
+		on_set_task(conn);
+	else if ((n == sizeof("/del_task")-1) && (0 == memcmp(cmd, "/del_task", sizeof("/del_task")-1)))
+		on_del_task(conn);
 	else
 		return 400;
 	return 200;
@@ -987,9 +994,18 @@ static int on_all_task(g_connection_pt conn) {
 	int i, j;
 	char first_line[256];
 
-	cJSON *root = NULL, *cata = NULL, *cata_item = NULL;
+	cJSON *root = NULL, *cata = NULL, *cata_item = NULL, *cj = NULL, *kv = NULL;
 	char* out = NULL;
+	int out_len = 0;
 	int ret_code = 0;
+	char* jsonp = NULL;
+	int jsonp_len = 0;
+	char* jsonp_out = NULL;
+	
+	kv = cJSON_GetObjectItem_EX(conn->header, "param.kv");
+	cj = cJSON_GetObjectItem_EX(kv, "jsoncallback");
+	if (NULL != cj)
+		jsonp = cj->valuestring;
 
 	// create sql
 	safe_snprintf(sql, sizeof(sql)-1, "select * from timer_tasks");
@@ -1026,10 +1042,209 @@ static int on_all_task(g_connection_pt conn) {
 	}
 	out = cJSON_PrintUnformatted(root);
 	cJSON_Delete(root);
+	if (NULL == out) {
+		send_http_wrong_rsp(conn, 500);
+		return -1;
+	}
 	// prepare for send rsp
-	conn->content_length = strlen(out);
-	conn->body_send_buf = out;
-	Info("%s\n", out);
+	out_len = strlen(out);
+	if (jsonp) {
+		jsonp_len = strlen(jsonp);
+		conn->content_length = jsonp_len + out_len + 2; // `jsonp(out)`
+		jsonp_out = (char*)malloc(conn->content_length + 1);
+		safe_snprintf(jsonp_out, conn->content_length + 1, "%s(%s)", jsonp, out);
+		conn->body_send_buf = jsonp_out;
+		free(out);
+		out = NULL;
+	}
+	else {
+		conn->content_length = out_len;
+		conn->body_send_buf = out;
+	}
+	Info("%s(%d): \n%s\n", __FUNCTION__, __LINE__, conn->body_send_buf);
+	safe_snprintf(first_line, sizeof(first_line)-1, "HTTP/1.1 %d %s", 200, DESC_200);
+	conn->rsp_header = cJSON_CreateObject();
+	cJSON_AddStringToObject(conn->rsp_header, "first_line", first_line);
+	cJSON_AddStringToObject(conn->rsp_header, "Content-Type", "application/json;charset=UTF-8");
+	cJSON_AddStringToObject(conn->rsp_header, "Server", GHTTP_SERVER);
+	if (conn->is_keepalive)
+		cJSON_AddStringToObject(conn->rsp_header, "Connection", "keep-alive");
+	else
+		cJSON_AddStringToObject(conn->rsp_header, "Connection", "close");
+	cJSON_AddNumberToObject(conn->rsp_header, "Content-Length", conn->content_length);
+
+	send_http_rsp(conn, 200);
+	return 0;
+}
+
+static int on_set_task(g_connection_pt conn) {
+	MYSQL* db = NULL;
+	static char sql[10240];
+	char first_line[256];
+
+	cJSON *root = NULL, * cj = NULL, *kv = NULL;
+	char* out = NULL;
+	int out_len = 0;
+	int ret_code = 0;
+	
+	char* mon_title = NULL;
+	char* mon_url = NULL;
+	char* mon_condition = NULL;
+	int mon_period = 86400;
+	int mon_lifecycle = 15;
+	int user_id = 0;
+	int is_finish = 0;
+	int task_id = 0;
+	char* jsonp = NULL;
+	int jsonp_len = 0;
+	char* jsonp_out = NULL;
+
+	kv = cJSON_GetObjectItem_EX(conn->header, "param.kv");
+	cj = cJSON_GetObjectItem_EX(kv, "title");
+	if (NULL != cj)
+		mon_title = cj->valuestring;
+	cj = cJSON_GetObjectItem_EX(kv, "url");
+	if (NULL != cj)
+		mon_url = cj->valuestring;
+	cj = cJSON_GetObjectItem_EX(kv, "condition");
+	if (NULL != cj)
+		mon_condition = cj->valuestring;
+	cj = cJSON_GetObjectItem_EX(kv, "period");
+	if (NULL != cj)
+		mon_period = cj->valueint;
+	cj = cJSON_GetObjectItem_EX(kv, "lifecycle");
+	if (NULL != cj)
+		mon_lifecycle = cj->valueint;
+	cj = cJSON_GetObjectItem_EX(kv, "jsoncallback");
+	if (NULL != cj)
+		jsonp = cj->valuestring;
+
+	// json
+	root = cJSON_CreateObject();
+	
+	// create sql
+	safe_snprintf(sql, sizeof(sql)-1, "insert into timer_tasks(mon_title, mon_url, mon_condition, mon_period, mon_lifecycle, user_id, is_finish, dt_create, dt_last_update) values('%s', '%s', '%s', %d, %d, %d, %d, now(), now())", 
+			mon_title, mon_url, mon_condition, mon_period, mon_lifecycle, user_id, is_finish);
+
+	Info("%s(%d): %s\n", __FUNCTION__, __LINE__, sql);
+	db = global.db;
+	if (0 != mysql_query(db, sql)) {
+		Error("%s(%d): Query failed. error: %s\n", __FUNCTION__, __LINE__, mysql_error(db));
+		mysql_close(db);
+		task_id = -1;
+		cJSON_AddNumberToObject(root, "ret_code", -1);
+		cJSON_AddStringToObject(root, "ret_msg", mysql_error(db));
+		cJSON_AddNumberToObject(root, "task_id", task_id);
+	}
+	else {
+		task_id = mysql_insert_id(db);
+		cJSON_AddNumberToObject(root, "ret_code", ret_code);
+		cJSON_AddStringToObject(root, "ret_msg", "success");
+		cJSON_AddNumberToObject(root, "task_id", task_id);
+	}
+
+	out = cJSON_PrintUnformatted(root);
+	cJSON_Delete(root);
+	if (NULL == out) {
+		send_http_wrong_rsp(conn, 500);
+		return -1;
+	}
+	// prepare for send rsp
+	out_len = strlen(out);
+	if (jsonp) {
+		jsonp_len = strlen(jsonp);
+		conn->content_length = jsonp_len + out_len + 2; // `jsonp(out)\0`
+		jsonp_out = (char*)malloc(conn->content_length + 1);
+		safe_snprintf(jsonp_out, conn->content_length + 1, "%s(%s)", jsonp, out);
+		conn->body_send_buf = jsonp_out;
+		free(out);
+		out = NULL;
+	}
+	else {
+		conn->content_length = out_len;
+		conn->body_send_buf = out;
+	}
+	Info("%s(%d): \n%s\n", __FUNCTION__, __LINE__, conn->body_send_buf);
+	safe_snprintf(first_line, sizeof(first_line)-1, "HTTP/1.1 %d %s", 200, DESC_200);
+	conn->rsp_header = cJSON_CreateObject();
+	cJSON_AddStringToObject(conn->rsp_header, "first_line", first_line);
+	cJSON_AddStringToObject(conn->rsp_header, "Content-Type", "application/json;charset=UTF-8");
+	cJSON_AddStringToObject(conn->rsp_header, "Server", GHTTP_SERVER);
+	if (conn->is_keepalive)
+		cJSON_AddStringToObject(conn->rsp_header, "Connection", "keep-alive");
+	else
+		cJSON_AddStringToObject(conn->rsp_header, "Connection", "close");
+	cJSON_AddNumberToObject(conn->rsp_header, "Content-Length", conn->content_length);
+
+	send_http_rsp(conn, 200);
+	return 0;
+}
+
+static int on_del_task(g_connection_pt conn) {
+	MYSQL* db = NULL;
+	static char sql[10240];
+	char first_line[256];
+
+	cJSON *root = NULL, * cj = NULL, *kv = NULL;
+	char* out = NULL;
+	int out_len =0;
+	int ret_code = 0;
+	char* jsonp = NULL;
+	int jsonp_len = 0;
+	char* jsonp_out = NULL;
+	int task_id = 0;
+	
+	kv = cJSON_GetObjectItem_EX(conn->header, "param.kv");
+	cj = cJSON_GetObjectItem_EX(kv, "id");
+	if (NULL != cj)
+		task_id = cj->valueint;
+	cj = cJSON_GetObjectItem_EX(kv, "jsoncallback");
+	if (NULL != cj)
+		jsonp = cj->valuestring;
+
+	// json
+	root = cJSON_CreateObject();
+	// create sql
+	safe_snprintf(sql, sizeof(sql)-1, "delete from timer_tasks where id = %d", task_id);
+
+	Info("%s(%d): %s\n", __FUNCTION__, __LINE__, sql);
+	db = global.db;
+	if (0 != mysql_query(db, sql)) {
+		Error("%s(%d): Query failed. error: %s\n", __FUNCTION__, __LINE__, mysql_error(db));
+		mysql_close(db);
+		task_id = -1;
+		cJSON_AddNumberToObject(root, "ret_code", -1);
+		cJSON_AddStringToObject(root, "ret_msg", mysql_error(db));
+		cJSON_AddNumberToObject(root, "task_id", task_id);
+	}
+	else {
+		task_id = mysql_insert_id(db);
+		cJSON_AddNumberToObject(root, "ret_code", ret_code);
+		cJSON_AddStringToObject(root, "ret_msg", "success");
+		cJSON_AddNumberToObject(root, "task_id", task_id);
+	}
+	out = cJSON_PrintUnformatted(root);
+	cJSON_Delete(root);
+	if (NULL == out) {
+		send_http_wrong_rsp(conn, 500);
+		return -1;
+	}
+	// prepare for send rsp
+	out_len = strlen(out);
+	if (jsonp) {
+		jsonp_len = strlen(jsonp);
+		conn->content_length = jsonp_len + out_len + 2; // `jsonp(out)`
+		jsonp_out = (char*)malloc(conn->content_length + 1);
+		safe_snprintf(jsonp_out, conn->content_length + 1, "%s(%s)", jsonp, out);
+		conn->body_send_buf = jsonp_out;
+		free(out);
+		out = NULL;
+	}
+	else {
+		conn->content_length = out_len;
+		conn->body_send_buf = out;
+	}
+	Info("%s(%d): \n%s\n", __FUNCTION__, __LINE__, conn->body_send_buf);
 	safe_snprintf(first_line, sizeof(first_line)-1, "HTTP/1.1 %d %s", 200, DESC_200);
 	conn->rsp_header = cJSON_CreateObject();
 	cJSON_AddStringToObject(conn->rsp_header, "first_line", first_line);
