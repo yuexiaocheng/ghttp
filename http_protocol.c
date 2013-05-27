@@ -202,6 +202,8 @@ cJSON* cJSON_GetObjectItem_EX(cJSON* json, const char* format)
 			safe_memcpy_0(key, sizeof(key)-1, p1, p2-p1);
 			p1 = p2 + 1;
 			d = cJSON_GetObjectItem(d, key);
+			if (NULL == d)
+				return NULL;
 		}
 	} while(1);
 }

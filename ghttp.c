@@ -994,7 +994,7 @@ static int on_all_task(g_connection_pt conn) {
 	int i, j;
 	char first_line[256];
 
-	cJSON *root = NULL, *cata = NULL, *cata_item = NULL, *cj = NULL, *kv = NULL;
+	cJSON *root = NULL, *cata = NULL, *cata_item = NULL, *cj = NULL;
 	char* out = NULL;
 	int out_len = 0;
 	int ret_code = 0;
@@ -1002,8 +1002,7 @@ static int on_all_task(g_connection_pt conn) {
 	int jsonp_len = 0;
 	char* jsonp_out = NULL;
 	
-	kv = cJSON_GetObjectItem_EX(conn->header, "param.kv");
-	cj = cJSON_GetObjectItem_EX(kv, "jsoncallback");
+	cj = cJSON_GetObjectItem_EX(conn->header, "param.kv.jsoncallback");
 	if (NULL != cj)
 		jsonp = cj->valuestring;
 
@@ -1100,6 +1099,10 @@ static int on_set_task(g_connection_pt conn) {
 	char* jsonp_out = NULL;
 
 	kv = cJSON_GetObjectItem_EX(conn->header, "param.kv");
+	if (NULL == kv) {
+		send_http_wrong_rsp(conn, 400);
+		return -1;
+	}
 	cj = cJSON_GetObjectItem_EX(kv, "title");
 	if (NULL != cj)
 		mon_title = cj->valuestring;
@@ -1111,10 +1114,10 @@ static int on_set_task(g_connection_pt conn) {
 		mon_condition = cj->valuestring;
 	cj = cJSON_GetObjectItem_EX(kv, "period");
 	if (NULL != cj)
-		mon_period = cj->valueint;
+		mon_period = atoi(cj->valuestring);
 	cj = cJSON_GetObjectItem_EX(kv, "lifecycle");
 	if (NULL != cj)
-		mon_lifecycle = cj->valueint;
+		mon_lifecycle = atoi(cj->valuestring);
 	cj = cJSON_GetObjectItem_EX(kv, "jsoncallback");
 	if (NULL != cj)
 		jsonp = cj->valuestring;
@@ -1195,9 +1198,13 @@ static int on_del_task(g_connection_pt conn) {
 	int task_id = 0;
 	
 	kv = cJSON_GetObjectItem_EX(conn->header, "param.kv");
+	if (NULL == kv) {
+		send_http_wrong_rsp(conn, 400);
+		return -1;
+	}
 	cj = cJSON_GetObjectItem_EX(kv, "id");
 	if (NULL != cj)
-		task_id = cj->valueint;
+		task_id = atoi(cj->valuestring);
 	cj = cJSON_GetObjectItem_EX(kv, "jsoncallback");
 	if (NULL != cj)
 		jsonp = cj->valuestring;
@@ -1218,7 +1225,6 @@ static int on_del_task(g_connection_pt conn) {
 		cJSON_AddNumberToObject(root, "task_id", task_id);
 	}
 	else {
-		task_id = mysql_insert_id(db);
 		cJSON_AddNumberToObject(root, "ret_code", ret_code);
 		cJSON_AddStringToObject(root, "ret_msg", "success");
 		cJSON_AddNumberToObject(root, "task_id", task_id);
