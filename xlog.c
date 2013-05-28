@@ -446,7 +446,7 @@ int xurl_decode(char* str, int len) {
 		data++;
 		dest++;
 	}
-	*dest = '\0';
+	// *dest = '\0';
 	return dest - str;
 }
 

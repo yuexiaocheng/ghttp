@@ -43,7 +43,7 @@ extern "C"
 cJSON* http_parse_request_header(const char* req, unsigned int req_len);
 cJSON* http_parse_response_header(const char* rsp, unsigned int rsp_len);
 
-void http_create_request_header(cJSON* rsp, dyn_buf* buff);
+void http_create_request_header(cJSON* req, dyn_buf* buff);
 void http_create_rsponse_header(cJSON* rsp, dyn_buf* buff);
 cJSON* cJSON_GetObjectItem_EX(cJSON* json, const char* format); // root.level1.level2.key
 #ifdef __cplusplus

@@ -72,6 +72,8 @@ static cJSON* http_request_first_line(const char* line, unsigned int len) {
 	char key[256];
 	char value[256];
 
+	xurl_decode((char*)line, len);
+
 	p1 = (char*)line;
 	header = cJSON_CreateObject();
 	// parse method
