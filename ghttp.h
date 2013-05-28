@@ -55,8 +55,7 @@ typedef enum {
     conn_type_nouse = 0,
     conn_type_listen,
     conn_type_client,
-    conn_type_upstream,
-    conn_type_upstream_proxy,
+    conn_type_pair,
 } conn_type_t;
 
 enum {
@@ -68,6 +67,9 @@ enum {
 #define GHTTP_SERVER GHTTP_NAME " " GHTTP_VERSION
 
 #define MAX_SOCKET (10*1000)
+#define MAX_PROC_NUM (64)
+
+#define MQ_KEY ((key_t)(0x1234))
 
 #define header_recv_buf_size (4*1024)
 #define header_send_buf_size (4*1024)
@@ -139,6 +141,11 @@ typedef g_connection_t* g_connection_pt;
 typedef void (*extend_free_proc_t)(void*);
 
 typedef g_connection_pt (*init_func)(g_connection_pt conns, int socket);
+
+typedef struct {
+    long mtype;       /* message type, must be > 0 */
+    char mstring[1024];    /* message data */
+} g_msg_t; 
 
 // INTERFACEs
 

@@ -20,6 +20,9 @@
 #include <string.h>
 #include <locale.h>
 #include <sys/wait.h>
+#include <sys/types.h>
+#include <sys/ipc.h>
+#include <sys/msg.h>
 
 #include "ghttp.h"
 #include "cJSON.h"
@@ -34,6 +37,7 @@ typedef struct {
 
 typedef struct {
 	int proc_num;
+    int pair[MAX_PROC_NUM][2];
 	int epollfd;
 	int listen_sockfd;
 	char listen_ip[32];
@@ -50,8 +54,7 @@ typedef struct {
 	int quit;
 	int pid;
 
-	char html_template_path[256];
-	char static_html_path[256];
+    int mqid;
 
 	db_info_s db_info;
 	MYSQL* db;
@@ -75,6 +78,8 @@ static int do_client_send_header(g_connection_pt conn);
 static int do_client_send_body(g_connection_pt conn);
 static int do_client_close(g_connection_pt conn);
 
+static int do_pair_recv(g_connection_pt conn);
+static int do_pair_close(g_connection_pt conn);
 #if 0
 static void sig_handler(int sig) {
 	switch (sig) {
@@ -420,43 +425,24 @@ static g_connection_pt init_client(g_connection_pt conns, int socket) {
 	return p;
 }
 
-#if 0
-g_connection_pt init_upstream(g_connection_pt conns, int socket)
-{
+static g_connection_pt init_pair(g_connection_pt conns, int socket) {
 	g_connection_pt p = init_noused(conns, socket);
 
-	p->conn_type = conn_type_upstream;
+	p->conn_type = conn_type_pair;
 	p->sockfd = socket;
 	p->session_id = global.session_seed++;
 	p->active_at = p->start_at = now();
 
-	p->do_recv = do_upstream_recv_header;
-	p->do_close = do_upstream_close;
+	p->do_recv = do_pair_recv;
+	p->do_close = do_pair_close;
 	return p;
 }
-
-
-g_connection_pt init_upstream_proxy(g_connection_pt conns, int socket)
-{
-	g_connection_pt p = init_noused(conns, socket);
-
-	p->conn_type = conn_type_upstream_proxy;
-	p->sockfd = socket;
-	p->session_id = global.session_seed++;
-	p->active_at = p->start_at = now();
-
-	p->do_recv = do_upstream_proxy_recv_header;
-	p->do_close = do_upstream_proxy_close;
-	return p;
-}
-#endif
 
 static init_func g_init_func[] = {
 	&init_noused,
 	&init_listen,
 	&init_client,
-	// &init_upstream,
-	// &init_upstream_proxy,
+	&init_pair,
 };
 
 static g_connection_pt create_conn(g_connection_pt conns, int socket, conn_type_t type) {
@@ -511,6 +497,66 @@ static bool is_complete_http_header(g_connection_pt conn) {
 	Info("%s(%d): \n%s\n", __FUNCTION__, __LINE__, debug);
 	free(debug);
 	return true;
+}
+
+static int do_pair_recv(g_connection_pt conn) {
+	int ret = 0;
+	int left = 0;
+	int status = 0;
+
+	assert(conn_type_pair == conn->conn_type);
+
+	left = sizeof(conn->recv_buf) - conn->bytes_recved;
+	ret = recv(conn->sockfd, conn->recv_buf+conn->bytes_recved, left, 0);
+	if (ret < 0) {
+		if (EAGAIN == errno || EINTR == errno) {
+			Info("%s(%d): recv(%d,%d) not ready\n", __FUNCTION__, __LINE__, conn->sockfd, left);
+			return 0;
+		}
+		Error("%s(%d): recv(%d,%d) failed. error(%d): %s\n", 
+				__FUNCTION__, __LINE__, conn->sockfd, left, errno, strerror(errno));
+		conn->do_close(conn);
+		return -1;
+	}
+	else if (0 == ret) {
+		// peer close
+		// Error("%s(%d): recv(%d,%d) return 0, peer closed\n", __FUNCTION__, __LINE__, conn->sockfd, left);
+		conn->do_close(conn);
+		return -2;
+	}
+	else {
+		// ok get some data
+		conn->active_at = now();
+		conn->bytes_recved += ret;
+
+		// if a complete http package?
+		if (is_complete_http_header(conn)) {
+			status = do_work(conn);
+			if (status != 200)
+				send_http_wrong_rsp(conn, status);
+		}
+		else if (ret == left) {
+			// wrong requst
+			Error("%s(%d): recv_buf(%d,%lu) is full, but not find http header ending, illegal request\n", 
+					__FUNCTION__, __LINE__, conn->sockfd, sizeof(conn->recv_buf));
+			conn->do_close(conn);
+		}
+	}
+	return 0;
+}
+
+static int do_pair_close(g_connection_pt conn) {
+	// Error("%s(%d): close(%d,%d)\n", __FUNCTION__, __LINE__, global.pid, conn->sockfd);
+	close(conn->sockfd);
+	conn->sockfd = socket_unused;
+
+	conn->head_bytes_to_send = 0;
+	conn->body_bytes_to_send = 0;
+	conn->bytes_to_recv = 0;
+	conn->do_send = NULL;
+	conn->do_recv = NULL;
+	conn->do_close = NULL;
+	return 0;
 }
 
 static int do_client_recv(g_connection_pt conn) {
@@ -759,6 +805,7 @@ static int business_worker(void) {
 	int i = 0, triggered = 0, timeout = 0;
 	g_connection_pt conn = NULL;
 	g_connection_pt listen_conn = NULL;
+	g_connection_pt pair_conn = NULL;
 	size_t sz = 0;
 	static int loop = 0;
 
@@ -792,7 +839,6 @@ static int business_worker(void) {
 		Error("%s(%d): create_tcp_listen() failed.\n", __FUNCTION__, __LINE__);
 		return -3;
 	}
-	Info("%s(%d): %s:%d is listening...\n", __FUNCTION__, __LINE__, global.listen_ip, global.listen_port);
 	listen_conn = create_conn(global.conns, global.listen_sockfd, conn_type_listen);
 	listen_conn->ev.data.fd = listen_conn->sockfd;
 	listen_conn->ev.events = EPOLLIN | EPOLLHUP | EPOLLERR;
@@ -801,7 +847,21 @@ static int business_worker(void) {
 				__FUNCTION__, __LINE__, listen_conn->sockfd, errno, strerror(errno));
 		return -4;
 	}
-	// connect to mysql
+	Info("%s(%d): %s:%d is listening...\n", __FUNCTION__, __LINE__, global.listen_ip, global.listen_port);
+
+    for (i=0; i<global.proc_num; ++i) {
+        pair_conn = create_conn(global.conns, global.pair[i][0], conn_type_pair);
+        pair_conn->ev.data.fd = pair_conn->sockfd;
+        pair_conn->ev.events = EPOLLIN | EPOLLHUP | EPOLLERR;
+        if (epoll_ctl(global.epollfd, EPOLL_CTL_ADD, pair_conn->sockfd, &(pair_conn->ev)) < 0) {
+            Error("%s(%d): epoll_ctl(%d, EPOLL_CTL_ADD, EPOLLHUP | EPOLLERR) failed. error(%d): %s\n", 
+                    __FUNCTION__, __LINE__, pair_conn->sockfd, errno, strerror(errno));
+            return -5;
+        }
+        Info("%s(%d): socketpair(%d)[0] is added into epoll loop...\n", __FUNCTION__, __LINE__, i);
+    }
+
+    // connect to mysql
 	global.db = connect_mysql(&global.db_info);
 
 	// main proc
@@ -851,6 +911,26 @@ static int business_worker(void) {
 	return 0;
 }
 
+static int tc_worker(int sockfd) {
+    g_msg_t m;
+
+    while(1) {
+        if (-1 == msgrcv(global.mqid, (void *)&m, sizeof(m), 0, IPC_NOWAIT)) {
+            if (ENOMSG == errno) {
+                usleep(10);
+                continue;
+            }
+            Error("%s(%d): msgget(%p) failed, error(%d): %s\n", 
+                    __FUNCTION__, __LINE__, MQ_KEY, errno, strerror(errno));
+            break;
+        }
+        else {
+            Info("%s(%d): msgrcv: %d, %s\n", __FUNCTION__, __LINE__, m.mtype, m.mstring);
+        }
+    }
+    return 0;
+}
+
 int main(int argc, char* argv[]) {
 	int ret = 0, i;
 	memset(&global, 0x00, sizeof(global));
@@ -866,9 +946,21 @@ int main(int argc, char* argv[]) {
 
 	ret = daemon(1, 1);
 
+    // create message Queue
+    global.mqid = msgget(MQ_KEY, IPC_PRIVATE);
+    if (-1 == global.mqid) {
+        global.mqid = msgget(MQ_KEY, 0666 | IPC_CREAT);
+        if (-1 == global.mqid) {
+            Error("%s(%d): msgget(%p) failed, error(%d): %s\n", 
+                    __FUNCTION__, __LINE__, MQ_KEY, errno, strerror(errno));
+            return -2;
+        }
+    }
+
 	// fork worker proc
 	Info("%s(%d): global.proc_num: %d\n", __FUNCTION__, __LINE__, global.proc_num);
 	for (i=0; i<global.proc_num; ++i) {
+        ret = socketpair(AF_UNIX, SOCK_STREAM, 0, global.pair[i]);
 		ret = fork();
 		if (ret < 0) {
 			// failed
@@ -876,16 +968,18 @@ int main(int argc, char* argv[]) {
 		}
 		else if (ret > 0) {
 			// parent
-			global.listen_port++;
+            close(global.pair[i][1]);
 			continue;
 		}
 		else {
 			// child
-			business_worker();
+            close(global.pair[i][0]);
+            tc_worker(global.pair[i][1]);
 			return 0;
 		}
 	}
-	// main proc
+    // main proc
+    business_worker();
 	wait(NULL);
 	return 0;
 }
@@ -1001,6 +1095,7 @@ static int on_all_task(g_connection_pt conn) {
 	char* jsonp = NULL;
 	int jsonp_len = 0;
 	char* jsonp_out = NULL;
+    g_msg_t m;
 	
 	cj = cJSON_GetObjectItem_EX(conn->header, "param.kv.jsoncallback");
 	if (NULL != cj)
@@ -1010,6 +1105,18 @@ static int on_all_task(g_connection_pt conn) {
 	safe_snprintf(sql, sizeof(sql)-1, "select * from timer_tasks");
 
 	Info("%s(%d): %s\n", __FUNCTION__, __LINE__, sql);
+
+    // msgsnd
+    m.mtype = 1;
+    safe_memcpy_0(m.mstring, sizeof(m.mstring)-1, sql, strlen(sql));
+    if (-1 == msgsnd(global.mqid, &m, sizeof(m), IPC_NOWAIT)) {
+        if (EAGAIN == errno) {
+            Info("%s(%d): no space for: %s\n", __FUNCTION__, __LINE__, m.mstring);
+        }
+        Error("%s(%d): msgsnd(%p) failed, error(%d): %s\n", 
+                __FUNCTION__, __LINE__, MQ_KEY, errno, strerror(errno));
+    }
+
 	db = global.db;
 	if (0 != mysql_query(db, sql)) {
 		Error("%s(%d): Query failed. error: %s\n", __FUNCTION__, __LINE__, mysql_error(db));
@@ -1362,42 +1469,3 @@ int send_http_wrong_rsp(g_connection_pt conn, int status) {
 	return 0;
 }
 
-int send_html_rsp(g_connection_pt conn, int status, const char* content_type)
-{
-	if (conn->sockfd < 0)
-		return 0;
-	conn->do_send = do_client_send_header;
-	conn->body_bytes_to_send = conn->content_length;
-	conn->bytes_sent = 0;
-	conn->status = status;
-	conn->ev.events |= EPOLLOUT;
-	if (epoll_ctl(global.epollfd, EPOLL_CTL_MOD, conn->sockfd, &(conn->ev)) < 0)
-	{
-		Error("%s(%d): epoll_ctl(%d, EPOLL_CTL_MOD, EPOLLOUT) failed. error(%d): %s\n", 
-				__FUNCTION__, __LINE__, conn->sockfd, errno, strerror(errno));
-		conn->do_close(conn);
-		return -1;
-	}
-	return 0;
-}
-
-
-int send_302(g_connection_pt conn, char* s302)
-{
-	Info("%s(%d): play url:\n%s\n", __FUNCTION__, __LINE__, s302);
-	if (conn->sockfd < 0)
-		return 0;
-	conn->do_send = do_client_send_header;
-	conn->body_bytes_to_send = conn->content_length;
-	conn->bytes_sent = 0;
-	conn->status = 302;
-	conn->ev.events |= EPOLLOUT;
-	if (epoll_ctl(global.epollfd, EPOLL_CTL_MOD, conn->sockfd, &(conn->ev)) < 0)
-	{
-		Error("%s(%d): epoll_ctl(%d, EPOLL_CTL_MOD, EPOLLOUT) failed. error(%d): %s\n", 
-				__FUNCTION__, __LINE__, conn->sockfd, errno, strerror(errno));
-		conn->do_close(conn);
-		return -1;
-	}
-	return 0;
-}

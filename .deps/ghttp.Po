@@ -30,17 +30,18 @@ ghttp.o: ghttp.c /usr/include/netdb.h /usr/include/features.h \
  /usr/include/bits/sigstack.h /usr/include/sys/ucontext.h \
  /usr/include/bits/sigthread.h /usr/include/sys/resource.h \
  /usr/include/bits/resource.h /usr/include/bits/waitflags.h \
- /usr/include/bits/waitstatus.h ghttp.h /usr/include/stdio.h \
- /usr/include/libio.h /usr/include/_G_config.h /usr/include/wchar.h \
- /usr/include/bits/stdio_lim.h /usr/include/bits/sys_errlist.h \
- /usr/include/stdlib.h /usr/include/alloca.h /usr/include/arpa/inet.h \
- /usr/include/sys/ioctl.h /usr/include/bits/ioctls.h \
- /usr/include/asm/ioctls.h /usr/include/asm-generic/ioctls.h \
- /usr/include/linux/ioctl.h /usr/include/asm/ioctl.h \
- /usr/include/asm-generic/ioctl.h /usr/include/bits/ioctl-types.h \
- /usr/include/sys/ttydefaults.h /usr/include/sys/shm.h \
- /usr/include/sys/ipc.h /usr/include/bits/ipctypes.h \
- /usr/include/bits/ipc.h /usr/include/bits/shm.h \
+ /usr/include/bits/waitstatus.h /usr/include/sys/ipc.h \
+ /usr/include/bits/ipctypes.h /usr/include/bits/ipc.h \
+ /usr/include/sys/msg.h /usr/include/bits/msq.h ghttp.h \
+ /usr/include/stdio.h /usr/include/libio.h /usr/include/_G_config.h \
+ /usr/include/wchar.h /usr/include/bits/stdio_lim.h \
+ /usr/include/bits/sys_errlist.h /usr/include/stdlib.h \
+ /usr/include/alloca.h /usr/include/arpa/inet.h /usr/include/sys/ioctl.h \
+ /usr/include/bits/ioctls.h /usr/include/asm/ioctls.h \
+ /usr/include/asm-generic/ioctls.h /usr/include/linux/ioctl.h \
+ /usr/include/asm/ioctl.h /usr/include/asm-generic/ioctl.h \
+ /usr/include/bits/ioctl-types.h /usr/include/sys/ttydefaults.h \
+ /usr/include/sys/shm.h /usr/include/bits/shm.h \
  /usr/include/openssl/sha.h /usr/include/openssl/e_os2.h \
  /usr/include/openssl/opensslconf.h \
  /usr/include/openssl/opensslconf-x86_64.h /usr/include/openssl/md5.h \
@@ -53,8 +54,8 @@ ghttp.o: ghttp.c /usr/include/netdb.h /usr/include/features.h \
  /usr/include/asm-generic/errno-base.h /usr/include/dirent.h \
  /usr/include/bits/dirent.h /usr/include/bits/posix1_lim.h \
  /usr/include/bits/local_lim.h /usr/include/linux/limits.h \
- /usr/include/iconv.h /usr/include/sys/msg.h /usr/include/bits/msq.h \
- /usr/include/assert.h /usr/include/sys/epoll.h /usr/include/sys/time.h \
+ /usr/include/iconv.h /usr/include/assert.h /usr/include/sys/epoll.h \
+ /usr/include/sys/time.h \
  /usr/lib/gcc/x86_64-redhat-linux/4.4.7/include/stdbool.h http_protocol.h \
  /usr/include/ctype.h xlog.h /usr/include/zlib.h /usr/include/zconf.h \
  cJSON.h dyn_buf.h iplib.h
@@ -189,6 +190,16 @@ ghttp.o: ghttp.c /usr/include/netdb.h /usr/include/features.h \
 
 /usr/include/bits/waitstatus.h:
 
+/usr/include/sys/ipc.h:
+
+/usr/include/bits/ipctypes.h:
+
+/usr/include/bits/ipc.h:
+
+/usr/include/sys/msg.h:
+
+/usr/include/bits/msq.h:
+
 ghttp.h:
 
 /usr/include/stdio.h:
@@ -228,12 +239,6 @@ ghttp.h:
 /usr/include/sys/ttydefaults.h:
 
 /usr/include/sys/shm.h:
-
-/usr/include/sys/ipc.h:
-
-/usr/include/bits/ipctypes.h:
-
-/usr/include/bits/ipc.h:
 
 /usr/include/bits/shm.h:
 
@@ -288,10 +293,6 @@ ghttp.h:
 /usr/include/linux/limits.h:
 
 /usr/include/iconv.h:
-
-/usr/include/sys/msg.h:
-
-/usr/include/bits/msq.h:
 
 /usr/include/assert.h:
 
