@@ -21,9 +21,9 @@ extern "C"
 
 #define MAX_COPY_LEN (10*1024*1024)
 typedef struct {
-	unsigned int maxlen;
-	unsigned int usedlen;
-	char* buffer;
+    unsigned int maxlen;
+    unsigned int usedlen;
+    char* buffer;
 } dyn_buf;
 
 int init_buffer(dyn_buf* it, unsigned int len);

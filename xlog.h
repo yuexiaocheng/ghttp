@@ -54,9 +54,9 @@ int def(FILE *source, FILE *dest, int level);
 void zerr(int ret);
 
 #define safe_memcpy(dest, dest_sz, src, src_sz) \
-	memncpy(dest, dest_sz, src, src_sz, __FUNCTION__, __LINE__, 0)
+    memncpy(dest, dest_sz, src, src_sz, __FUNCTION__, __LINE__, 0)
 #define safe_memcpy_0(dest, dest_sz, src, src_sz) \
-	memncpy(dest, dest_sz, src, src_sz, __FUNCTION__, __LINE__, 1)
+    memncpy(dest, dest_sz, src, src_sz, __FUNCTION__, __LINE__, 1)
 
 #ifdef __cplusplus
 }

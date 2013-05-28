@@ -52,15 +52,15 @@ extern "C"
 #pragma pack(1)
 
 typedef enum {
-	conn_type_nouse = 0,
-	conn_type_listen,
-	conn_type_client,
-	conn_type_upstream,
-	conn_type_upstream_proxy,
+    conn_type_nouse = 0,
+    conn_type_listen,
+    conn_type_client,
+    conn_type_upstream,
+    conn_type_upstream_proxy,
 } conn_type_t;
 
 enum {
-	socket_unused = -1,
+    socket_unused = -1,
 };
 
 #define GHTTP_VERSION "1.0.0"
@@ -76,62 +76,62 @@ enum {
 
 typedef struct tag_g_connection_t
 {
-	// extend
-	void* extend;
+    // extend
+    void* extend;
 
-	// routine
-	int conn_type;
-	int session_id;
-	int sockfd;
-	struct sockaddr_in client_addr;
+    // routine
+    int conn_type;
+    int session_id;
+    int sockfd;
+    struct sockaddr_in client_addr;
 
-	// epoll
-	struct epoll_event ev;
-	
-	// for upstream
-	int up_session_id;
-	int up_sockfd;
-	struct sockaddr_in up_addr;
+    // epoll
+    struct epoll_event ev;
+    
+    // for upstream
+    int up_session_id;
+    int up_sockfd;
+    struct sockaddr_in up_addr;
 
-	// timestamp
-	long long start_at;
-	long long active_at;
-	int begin_ms;
-	char access_time[32]; // 20120704 16:35:00.297
+    // timestamp
+    long long start_at;
+    long long active_at;
+    int begin_ms;
+    char access_time[32]; // 20120704 16:35:00.297
 
-	// buffer bytes
-	unsigned int bytes_sent;
-	unsigned int bytes_recved;
+    // buffer bytes
+    unsigned int bytes_sent;
+    unsigned int bytes_recved;
 
-	unsigned int head_bytes_to_send;
-	unsigned int body_bytes_to_send;
-	unsigned int bytes_to_recv;
+    unsigned int head_bytes_to_send;
+    unsigned int body_bytes_to_send;
+    unsigned int bytes_to_recv;
 
-	// buffer for header part
-	char recv_buf[header_recv_buf_size];
-	char send_buf[header_send_buf_size];
+    // buffer for header part
+    char recv_buf[header_recv_buf_size];
+    char send_buf[header_send_buf_size];
 
-	// buffer for body part
-	char* body_recv_buf;
-	char* body_send_buf;
-	char static_file[256];
-	off_t offset;
-	int static_file_fd;
+    // buffer for body part
+    char* body_recv_buf;
+    char* body_send_buf;
+    char static_file[256];
+    off_t offset;
+    int static_file_fd;
 
-	// http protocol part
-	cJSON* header;
-	cJSON* rsp_header;
-	int head_length;
-	unsigned int content_length;
-	int status;
-	bool is_keepalive;
-	char real_ip[32];
+    // http protocol part
+    cJSON* header;
+    cJSON* rsp_header;
+    int head_length;
+    unsigned int content_length;
+    int status;
+    bool is_keepalive;
+    char real_ip[32];
 
-	// callback function
-	int (*do_send)(struct tag_g_connection_t* conn);
-	int (*do_recv)(struct tag_g_connection_t* conn);
-	int (*do_close)(struct tag_g_connection_t* conn);
-	void (*do_timer)(struct tag_g_connection_t* conn);
+    // callback function
+    int (*do_send)(struct tag_g_connection_t* conn);
+    int (*do_recv)(struct tag_g_connection_t* conn);
+    int (*do_close)(struct tag_g_connection_t* conn);
+    void (*do_timer)(struct tag_g_connection_t* conn);
 } g_connection_t;
 
 typedef g_connection_t* g_connection_pt;

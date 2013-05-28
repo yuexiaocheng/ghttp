@@ -21,29 +21,29 @@ extern "C"
 
 struct acl_node
 {
-	struct acl_node* left;
-	struct acl_node* right;
-	int isp_id;
+    struct acl_node* left;
+    struct acl_node* right;
+    int isp_id;
 };
 
 struct acl_node g_tree;
 
 typedef struct 
 {
-	int id;
-	char name[128];
+    int id;
+    char name[128];
 } isp;
 
 typedef struct
 {
-	char ip[32];
-	int mask;
-	int id;
+    char ip[32];
+    int mask;
+    int id;
 } isp_ip;
 
 enum
 {
-	UNKNOWN_ISPID = 800615,
+    UNKNOWN_ISPID = 800615,
 };
 
 int build_iptree(const char* file);
