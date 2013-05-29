@@ -596,52 +596,52 @@ static int do_pair_recv_header(g_connection_pt conn) {
                 return -4;
             }
             conn->content_length = rsp_len;
-			conn->bytes_to_recv = conn->content_length;
+            conn->bytes_to_recv = conn->content_length;
             memcpy(conn->body_recv_buf, p+4, more);
-			conn->bytes_recved = more;
-			conn->do_recv = do_pair_recv_body;
-			if (conn->bytes_to_recv == conn->bytes_recved)
-				conn->do_recv(conn);
-			return 0;
+            conn->bytes_recved = more;
+            conn->do_recv = do_pair_recv_body;
+            if (conn->bytes_to_recv == conn->bytes_recved)
+                conn->do_recv(conn);
+            return 0;
         }
     }
     return 0;
 }
 
 static int do_pair_recv_body(g_connection_pt conn) {
-	int ret = 0;
-	g_connection_pt client_conn = NULL;
-	int left = 0;
+    int ret = 0;
+    g_connection_pt client_conn = NULL;
+    int left = 0;
     int session_id = 0;
     int sockfd = 0;
     cJSON* cj = NULL;
 
-	assert(conn_type_pair == conn->conn_type);
+    assert(conn_type_pair == conn->conn_type);
 
-	left = conn->bytes_to_recv - conn->bytes_recved;
-	if (0 == left)
-		goto finish_recv;
-	ret = recv(conn->sockfd, conn->body_recv_buf+conn->bytes_recved, left, 0);
-	if (ret < 0) {
-		if (EAGAIN == errno || EINTR == errno) {
-			Error("%s(%d): recv(%d,%d) not ready\n", __FUNCTION__, __LINE__, conn->sockfd, left);
-			return 0;
-		}
-		Error("%s(%d): recv(%d,%d) failed. error(%d): %s\n", 
-				__FUNCTION__, __LINE__, conn->sockfd, left, errno, strerror(errno));
-		conn->do_close(conn);
-		return -1;
-	}
-	else if (0 == ret) {
-		// peer close
-		conn->do_close(conn);
-		return -2;
-	}
-	else {
-		// ok get body data
-		conn->active_at = now();
-		conn->bytes_recved += ret;
-		if (conn->bytes_recved == conn->bytes_to_recv) {
+    left = conn->bytes_to_recv - conn->bytes_recved;
+    if (0 == left)
+        goto finish_recv;
+    ret = recv(conn->sockfd, conn->body_recv_buf+conn->bytes_recved, left, 0);
+    if (ret < 0) {
+        if (EAGAIN == errno || EINTR == errno) {
+            Error("%s(%d): recv(%d,%d) not ready\n", __FUNCTION__, __LINE__, conn->sockfd, left);
+            return 0;
+        }
+        Error("%s(%d): recv(%d,%d) failed. error(%d): %s\n", 
+                __FUNCTION__, __LINE__, conn->sockfd, left, errno, strerror(errno));
+        conn->do_close(conn);
+        return -1;
+    }
+    else if (0 == ret) {
+        // peer close
+        conn->do_close(conn);
+        return -2;
+    }
+    else {
+        // ok get body data
+        conn->active_at = now();
+        conn->bytes_recved += ret;
+        if (conn->bytes_recved == conn->bytes_to_recv) {
 finish_recv:
             // recv ok
             cj = cJSON_GetObjectItem_EX(conn->header, "session_id");
@@ -676,7 +676,7 @@ finish_recv:
             clear_conn(conn);
         }
     }
-	return 0;
+    return 0;
 }
 
 
