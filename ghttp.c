@@ -1000,7 +1000,7 @@ static int business_worker(void) {
                     __FUNCTION__, __LINE__, pair_conn->sockfd, errno, strerror(errno));
             return -6;
         }
-        Info("%s(%d): socketpair(%d)[0] is added into epoll loop...\n", __FUNCTION__, __LINE__, i);
+        Info("%s(%d): socketpair(%d) is added into epoll loop...\n", __FUNCTION__, __LINE__, pair_conn->sockfd);
     }
 
     // main proc
@@ -1323,9 +1323,14 @@ int main(int argc, char* argv[]) {
             return 0;
         }
     }
-    // main proc
-    business_worker();
-    wait(NULL);
+    ret = fork();
+    if (ret < 0)
+        return -2;
+    else if (ret > 0)
+        wait(NULL);
+    else
+        // main proc
+        business_worker();
     return 0;
 }
 
