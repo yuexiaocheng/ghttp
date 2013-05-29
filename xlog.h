@@ -58,6 +58,8 @@ void zerr(int ret);
 #define safe_memcpy_0(dest, dest_sz, src, src_sz) \
     memncpy(dest, dest_sz, src, src_sz, __FUNCTION__, __LINE__, 1)
 
+#define xcpymem(dst, src, n)   (((char *) memcpy(dst, src, n)) + (n))
+
 #ifdef __cplusplus
 }
 #endif

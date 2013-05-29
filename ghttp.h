@@ -71,12 +71,14 @@ enum {
 
 #define MQ_KEY ((key_t)(0x1234))
 
+#define LUCKY_NUM (4096)
+
 #define header_recv_buf_size (4*1024)
 #define header_send_buf_size (4*1024)
 #define max_body_send_buf_size (1024*1024)
 #define max_body_recv_buf_size (1024*1024)
 
-typedef struct tag_g_connection_t
+typedef struct g_connection_s
 {
     // extend
     void* extend;
@@ -114,7 +116,9 @@ typedef struct tag_g_connection_t
     char send_buf[header_send_buf_size];
 
     // buffer for body part
+    int body_recv_buf_len;
     char* body_recv_buf;
+    int body_send_buf_len;
     char* body_send_buf;
     char static_file[256];
     off_t offset;
@@ -130,10 +134,11 @@ typedef struct tag_g_connection_t
     char real_ip[32];
 
     // callback function
-    int (*do_send)(struct tag_g_connection_t* conn);
-    int (*do_recv)(struct tag_g_connection_t* conn);
-    int (*do_close)(struct tag_g_connection_t* conn);
-    void (*do_timer)(struct tag_g_connection_t* conn);
+    int (*do_send)(struct g_connection_s* conn);
+    int (*do_recv)(struct g_connection_s* conn);
+    int (*do_close)(struct g_connection_s* conn);
+    void (*do_timer)(struct g_connection_s* conn);
+    int (*tc_done)(struct g_connection_s* conn, char* data, int len);
 } g_connection_t;
 
 typedef g_connection_t* g_connection_pt;
@@ -142,10 +147,24 @@ typedef void (*extend_free_proc_t)(void*);
 
 typedef g_connection_pt (*init_func)(g_connection_pt conns, int socket);
 
+enum {
+    MSG_UNKNOWN = 0,
+    MSG_ALL_TASK = 1,
+    MSG_SET_TASK = 2,
+    MSG_DEL_TASK = 3,
+};
+
 typedef struct {
     long mtype;       /* message type, must be > 0 */
-    char mstring[1024];    /* message data */
+    char mstring[2048];    /* message data */
 } g_msg_t; 
+
+typedef struct {
+    int session_id;
+    int sockfd;
+    int len;
+    char buff[1];
+} tc_rsp_t;
 
 // INTERFACEs
 
