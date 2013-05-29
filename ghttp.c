@@ -1292,7 +1292,7 @@ int main(int argc, char* argv[]) {
     ret = daemon(1, 1);
 
     // create message Queue
-    global.mqid = msgget(MQ_KEY, IPC_PRIVATE);
+    global.mqid = msgget(MQ_KEY, 0666);
     if (-1 == global.mqid) {
         global.mqid = msgget(MQ_KEY, 0666 | IPC_CREAT);
         if (-1 == global.mqid) {
@@ -1398,7 +1398,8 @@ static void write_access_log(g_connection_pt conn) {
         fclose(p);
     }
     else
-        Error("can't write access log(%s), something is wrong", path);
+        Error("%s(%d): can't write access log(%s), something is wrong\n", 
+                __FUNCTION__, __LINE__, path);
 
     int64_t now = (int64_t)tv.tv_sec*1000*1000 + (int64_t)tv.tv_usec;
     conn->begin_ms = (int)(now/1000);
