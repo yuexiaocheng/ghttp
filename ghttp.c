@@ -1345,6 +1345,7 @@ static void write_access_log(g_connection_pt conn) {
     char* xforward_ip = NULL;
     char* host = NULL;
     char* ua = NULL;
+    char* ref = NULL;
     char* first_line = NULL;
     char path[256] = {0};
 
@@ -1379,22 +1380,25 @@ static void write_access_log(g_connection_pt conn) {
         }
         cj = cJSON_GetObjectItem_EX(conn->header, "User-Agent");
         if (NULL != cj) {
-            ua = cJSON_Print(cj);
+            ua = cj->valuestring;
+        }
+        cj = cJSON_GetObjectItem_EX(conn->header, "Referer");
+        if (NULL != cj) {
+            ref = cj->valuestring;
         }
         cj = cJSON_GetObjectItem_EX(conn->header, "first_line");
         if (NULL != cj) {
             first_line = cj->valuestring;
         }
-        fprintf(p, "%s.%03ld - %s %s %s %s %s %s\n", 
+        fprintf(p, "%s.%03ld - %s %s \"%s\" \"%s\" \"%s\" \"%s\" \"%s\"\n", 
                 time_now, (tv.tv_usec/1000), 
                 conn->real_ip, 
                 host ? host : "-", 
-                first_line ? first_line : "unknown",
+                first_line ? first_line : "\"-\"",
+                ref? ref : "\"-\"", 
                 ua? ua : "\"-\"", 
                 client_ip ? client_ip : "-", 
                 xforward_ip ? xforward_ip : "-");
-        if (ua)
-            free(ua);
         fclose(p);
     }
     else
