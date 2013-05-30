@@ -19,6 +19,7 @@ extern "C"
 {
 #endif
 
+#define _GNU_SOURCE
 #include <string.h>
 #include <sys/types.h>
 #include <ctype.h>

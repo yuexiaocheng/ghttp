@@ -86,7 +86,7 @@ static cJSON* http_request_first_line(const char* line, unsigned int len) {
     // parse cmd
     p2 = memchr(p1, '?', e-p1);
     if (NULL == p2) {
-        p2 = memchr(p1, ' ', e-p1); // ` `
+        p2 = memrchr(p1, ' ', e-p1); // ` `
         if (NULL == p2)
             goto parse_failed;
         safe_memcpy_0(longest, sizeof(longest)-1, p1, p2-p1);
@@ -97,7 +97,7 @@ static cJSON* http_request_first_line(const char* line, unsigned int len) {
         cJSON_AddStringToObject(header, "cmd", longest);
         p1 = p2 + 1; // `?`
         // parse parameters
-        p2 = memchr(p1, ' ', e-p1);
+        p2 = memrchr(p1, ' ', e-p1);
         if (NULL == p2)
             goto parse_failed;
         safe_memcpy_0(longest, sizeof(longest)-1, p1, p2-p1);

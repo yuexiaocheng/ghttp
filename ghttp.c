@@ -1241,7 +1241,7 @@ static int tc_worker(int sockfd) {
             free(body);
             body = NULL;
             
-            Info("%s(%d): rsp\n%s\n", __FUNCTION__, __LINE__, r);
+            // Info("%s(%d): rsp\n%s\n", __FUNCTION__, __LINE__, r);
 
             sent = 0;
             left = rlen - 1;
